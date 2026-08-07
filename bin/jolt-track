@@ -1,0 +1,26 @@
+#!/bin/bash
+# jolt-track — run any CLI agent so Jolt counts it as a live agent.
+#
+# Use this for terminal agents that have no lifecycle-hook system of their own
+# (aider, most CLIs). It drops a heartbeat file while the command runs and removes
+# it on exit — even on Ctrl-C or crash.
+#
+# Usage:  jolt-track <command> [args...]
+#   e.g.  jolt-track aider
+#         jolt-track codex
+#         alias aider='jolt-track aider'   # make it automatic
+set -euo pipefail
+
+if [ "$#" -eq 0 ]; then
+    echo "usage: jolt-track <command> [args...]" >&2
+    exit 64
+fi
+
+dir="$HOME/.jolt/agents"
+mkdir -p "$dir"
+name="$(basename "$1")"
+f="$dir/$name-$$"
+: > "$f"
+trap 'rm -f "$f"' EXIT INT TERM HUP
+
+"$@"

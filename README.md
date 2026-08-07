@@ -38,6 +38,14 @@ Turn it on and the coffee cup becomes a green scanner (white head, fading green 
 - Jolt counts those files (and auto-removes any older than 12h in case of a crash).
 - If no agent has been instrumented yet, Jolt automatically falls back to the process scan, so Agent Mode always works out of the box.
 
+**CLI agents with no hooks:** many terminal agents (e.g. `aider`) have no lifecycle-hook system to accept the setup prompt. For those, use the [`jolt-track`](bin/jolt-track) wrapper — it drops a heartbeat while the command runs and removes it on exit (even on Ctrl-C):
+
+```bash
+cp bin/jolt-track ~/.local/bin/ && chmod +x ~/.local/bin/jolt-track
+jolt-track aider                 # counts while it runs
+alias aider='jolt-track aider'   # make it automatic
+```
+
 ## Install
 
 1. Download **[Jolt.dmg](https://github.com/DHRlabs/Jolt/releases/latest/download/Jolt.dmg)**.
