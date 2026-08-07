@@ -293,11 +293,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let level: CGFloat
                 switch dist {
                 case 0: level = 1.0
-                case 1: level = 0.5
-                case 2: level = 0.18
-                default: level = 0.07
+                case 1: level = 0.55
+                case 2: level = 0.22
+                default: level = 0.08
                 }
-                NSColor(srgbRed: 1.0, green: 0.13, blue: 0.06, alpha: level).setFill()
+                // White head fading to green along the tail
+                let t = min(1.0, CGFloat(dist) / 2.0)
+                let r = 1.0 - t * 0.85   // 1.00 → 0.15
+                let b = 1.0 - t * 0.70   // 1.00 → 0.30
+                NSColor(srgbRed: r, green: 1.0, blue: b, alpha: level).setFill()
                 let x = CGFloat(i) * step
                 let y = (h - dot) / 2
                 NSBezierPath(ovalIn: NSRect(x: x, y: y, width: dot, height: dot)).fill()
