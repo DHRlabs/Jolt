@@ -73,6 +73,15 @@ When you enable this, Jolt shows the standard macOS password prompt and runs `su
 - With the lid closed there's **no active cooling**, so avoid heavy sustained loads for long stretches.
 - The setting **persists even if you quit Jolt.** Turn it off in the menu, or run `sudo pmset -a disablesleep 0`.
 
+## Uninstall
+
+Jolt keeps its data in `~/.jolt/` and adds a hook to Claude Code's `settings.json` (and, if you ran the setup prompt elsewhere, to other agents). Dragging the app to the Trash would leave that behind, so clean it up first:
+
+- **Easiest:** open Jolt's menu → **Uninstall Jolt…**. It removes its hooks from Claude Code (backup kept), deletes `~/.jolt`, removes `jolt-track`, and turns off lid-closed keep-awake. Then drag `Jolt.app` to the Trash.
+- **From source:** `bash Scripts/uninstall.sh`.
+
+Any *other* agents you wired up with the setup prompt need undoing in those tools (the prompt tells each agent to report exactly what it changed).
+
 ## Build from source
 
 Requires the Xcode Command Line Tools (`xcode-select --install`).

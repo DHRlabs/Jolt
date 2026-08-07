@@ -127,6 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         about.target = self
         menu.addItem(about)
 
+        let uninstallItem = NSMenuItem(title: "Uninstall Jolt…", action: #selector(uninstallData), keyEquivalent: "")
+        uninstallItem.target = self
+        menu.addItem(uninstallItem)
+
         let quit = NSMenuItem(title: "Quit Jolt", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -239,6 +243,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         """
         alert.alertStyle = .informational
         alert.runModal()
+    }
+
+    @objc private func uninstallData() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Remove Jolt's data and integrations?"
+        alert.informativeText = """
+        This will:
+        • turn off "Keep Awake With Lid Closed" if it's on,
+        • remove Jolt's hooks from Claude Code's settings.json (a backup is kept),
+        • delete the ~/.jolt folder,
+        • remove ~/.local/bin/jolt-track.
+
+        It will NOT delete Jolt.app itself — drag that to the Trash afterward. Any OTHER agents you wired up with the setup prompt must be undone in those tools.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        var report: [String] = []
+        let home = FileManager.default.homeDirectoryForCurrentUser
+
+        if lidCloseAwakeEnabled(), runPrivileged("pmset -a disablesleep 0") {
+            report.append("• Re-enabled system sleep (lid-closed off).")
+        }
+        report.append("• " + removeClaudeHooks())
+
+        let jolt = home.appendingPathComponent(".jolt")
+        if FileManager.default.fileExists(atPath: jolt.path) {
+            try? FileManager.default.removeItem(at: jolt)
+            report.append("• Deleted ~/.jolt.")
+        } else {
+            report.append("• ~/.jolt was not present.")
+        }
+
+        let track = home.appendingPathComponent(".local/bin/jolt-track")
+        if FileManager.default.fileExists(atPath: track.path) {
+            try? FileManager.default.removeItem(at: track)
+            report.append("• Removed ~/.local/bin/jolt-track.")
+        }
+
+        setOff()
+
+        let done = NSAlert()
+        done.messageText = "Jolt data removed"
+        done.informativeText = report.joined(separator: "\n") + "\n\nNow drag Jolt.app to the Trash. Quit Jolt now?"
+        done.addButton(withTitle: "Quit Jolt")
+        done.addButton(withTitle: "Keep Running")
+        if done.runModal() == .alertFirstButtonReturn { NSApplication.shared.terminate(nil) }
+    }
+
+    // Remove only Jolt's own hooks from Claude Code's settings.json, leaving other
+    // hooks untouched. Uses Foundation JSON (no jq dependency on the user's machine).
+    private func removeClaudeHooks() -> String {
+        let settings = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
+        guard let data = try? Data(contentsOf: settings),
+              var root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return "Claude Code settings.json not found or unreadable — skipped (remove hooks manually if needed)."
+        }
+        guard var hooks = root["hooks"] as? [String: Any] else {
+            return "No hooks block in Claude Code settings — nothing to remove."
+        }
+        let marker = "jolt/hooks/claude-heartbeat"
+        var removed = 0
+        for event in ["SessionStart", "SessionEnd"] {
+            guard var groups = hooks[event] as? [[String: Any]] else { continue }
+            let before = groups.count
+            groups = groups.filter { group in
+                let cmds = (group["hooks"] as? [[String: Any]])?.compactMap { $0["command"] as? String } ?? []
+                return !cmds.contains { $0.contains(marker) }
+            }
+            removed += before - groups.count
+            if groups.isEmpty { hooks.removeValue(forKey: event) } else { hooks[event] = groups }
+        }
+        if hooks.isEmpty { root.removeValue(forKey: "hooks") } else { root["hooks"] = hooks }
+
+        guard removed > 0 else { return "No Jolt hooks found in Claude Code settings." }
+        let bak = settings.deletingLastPathComponent().appendingPathComponent("settings.json.jolt-uninstall-bak")
+        try? data.write(to: bak)
+        if let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .withoutEscapingSlashes]) {
+            try? out.write(to: settings)
+            return "Removed \(removed) Jolt hook(s) from Claude Code (backup: \(bak.lastPathComponent))."
+        }
+        return "Found \(removed) Jolt hook(s) but could not rewrite settings.json — remove them manually."
     }
 
     @objc private func quit() { NSApplication.shared.terminate(nil) }
