@@ -267,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         scanHead += scanDir
         if scanHead >= scanDots - 1 { scanHead = scanDots - 1; scanDir = -1 }
         else if scanHead <= 0 { scanHead = 0; scanDir = 1 }
-        statusItem.button?.image = scannerImage(head: scanHead)
+        statusItem.button?.image = scannerImage(head: scanHead, dir: scanDir)
     }
 
     private func updateAgentCount() {
@@ -280,28 +280,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func scannerImage(head: Int) -> NSImage {
-        let dot: CGFloat = 3.4
-        let gap: CGFloat = 2.0
+    private func scannerImage(head: Int, dir: Int) -> NSImage {
+        let dot: CGFloat = 4.6
+        let gap: CGFloat = 2.2
         let step = dot + gap
         let w = CGFloat(scanDots) * step
-        let h: CGFloat = 16
+        let h: CGFloat = 18
         let dots = scanDots
         let img = NSImage(size: NSSize(width: w, height: h), flipped: false) { _ in
             for i in 0..<dots {
-                let dist = abs(i - head)
-                let level: CGFloat
-                switch dist {
-                case 0: level = 1.0
-                case 1: level = 0.55
-                case 2: level = 0.22
-                default: level = 0.08
+                // behind > 0 = trailing behind the head, 0 = the head, < 0 = ahead of it
+                let behind = (head - i) * dir
+                let color: NSColor
+                if behind == 0 {
+                    color = NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)      // white head
+                } else if behind > 0 {
+                    let a = max(0.06, CGFloat(0.72 * pow(0.6, Double(behind - 1))))        // green tail, fading
+                    color = NSColor(srgbRed: 0.15, green: 1.0, blue: 0.30, alpha: a)
+                } else {
+                    color = NSColor(srgbRed: 0.15, green: 1.0, blue: 0.30, alpha: 0.06)    // unlit LED ahead
                 }
-                // White head fading to green along the tail
-                let t = min(1.0, CGFloat(dist) / 2.0)
-                let r = 1.0 - t * 0.85   // 1.00 → 0.15
-                let b = 1.0 - t * 0.70   // 1.00 → 0.30
-                NSColor(srgbRed: r, green: 1.0, blue: b, alpha: level).setFill()
+                color.setFill()
                 let x = CGFloat(i) * step
                 let y = (h - dot) / 2
                 NSBezierPath(ovalIn: NSRect(x: x, y: y, width: dot, height: dot)).fill()
