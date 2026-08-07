@@ -20,10 +20,23 @@ Click the coffee cup in your menu bar to stop your Mac from sleeping. Click agai
 
 - **Keep Awake** — stay awake indefinitely.
 - **Keep Awake For…** — 15 min, 30 min, 1 hour, 2 hours, or 5 hours, then auto-off.
+- **Agent Mode** — turns the menu bar into a green Knight Rider scanner with a live count of running AI coding agents; the sweep speeds up as more agents come online.
 - **Keep Awake With Lid Closed** — disables system sleep entirely so your Mac keeps running with the lid shut (great for letting background jobs or agents keep working). Requires your admin password.
 - **Launch at Login** — start Jolt automatically.
 
 The icon fills in when awake mode is on, and the top of the menu always tells you the current state.
+
+## Agent Mode
+
+Turn it on and the coffee cup becomes a green scanner (white head, fading green comet trail) with a number next to it: how many AI coding agents are running. The sweep gets faster as the count climbs.
+
+**How the count works, with zero setup:** Jolt scans running processes for known agent CLIs (`claude`, `codex`, `hermes`, `opencode`, `aider`, `goose`, `cline`, `gemini`, `crush`) and skips their background servers. This catches agents launched from a terminal *or* from an IDE's integrated terminal / extension. It can't see an IDE's built-in assistant (Cursor Composer, Copilot) because those talk to the cloud without a local agent process.
+
+**Precise tracking (optional, one click):** the process scan is a good-enough heuristic. For an exact count across any tool, choose **Set Up Precise Agent Tracking…**. It copies a tool-agnostic prompt to your clipboard; paste it into any agent (Claude Code, Codex, Hermes, Aider, …) and that agent wires up its own lifecycle hook to report to Jolt. Do it once per tool. Under the hood:
+
+- Each live session keeps a file in `~/.jolt/agents/`; it's deleted when the session ends.
+- Jolt counts those files (and auto-removes any older than 12h in case of a crash).
+- If no agent has been instrumented yet, Jolt automatically falls back to the process scan, so Agent Mode always works out of the box.
 
 ## Install
 

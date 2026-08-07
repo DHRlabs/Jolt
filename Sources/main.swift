@@ -38,6 +38,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ("5 hours",  5 * 60 * 60),
     ]
 
+    // Tool-agnostic prompt the user pastes into any agent to wire it up to Jolt.
+    static let trackingPrompt = """
+    Set up live "agent running" tracking for THIS agent so the Jolt macOS menu-bar app can count it.
+
+    HEARTBEAT CONTRACT (how Jolt counts agents):
+    - Directory: ~/.jolt/agents  (create if missing: mkdir -p ~/.jolt/agents)
+    - While a session is active, it keeps one uniquely-named file in that directory, e.g. <tool>-<pid>. An empty file is fine; optional one-line JSON contents: {"agent":"<tool>","pid":<pid>}
+    - When the session ends, that file is deleted.
+    - Jolt counts the files = number of live agents, and deletes files older than 12h to recover from crashes. Re-touching the file periodically is welcome but optional.
+
+    DO THIS NOW:
+    1. Work out which agent/CLI you are and where your own config lives. Examples: Claude Code -> ~/.claude/settings.json hooks; Codex -> its config/hooks; Aider, Cursor, Hermes, OpenCode, Goose, Gemini CLI, etc. -> their own mechanisms.
+    2. If this tool supports session lifecycle hooks (start / stop / exit, or per-turn events), add hooks — merged into existing config, backed up first, without clobbering anything — that do:
+         on start:  mkdir -p ~/.jolt/agents && : > ~/.jolt/agents/<tool>-$PPID
+         on end:    rm -f ~/.jolt/agents/<tool>-$PPID
+       Use whatever stable per-session id your tool exposes ($PPID or the tool's own session id are both fine).
+    3. If this tool has NO hook system, achieve the same create-on-start / delete-on-exit another safe way (a shell function plus an exit trap in the user's shell rc, or the tool's startup script) and explain what you did.
+    4. Either way, create the heartbeat file for the CURRENT session right now so it shows up in Jolt immediately.
+    5. Print a short summary: which agent you detected, exactly what you changed, and how to undo it.
+
+    RULES: be idempotent (safe to run more than once), never write secrets, and only touch the detected tool's own config. If you cannot tell which tool you are, just do step 4 and say so.
+    """
+
     // MARK: Lifecycle
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -80,6 +103,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         agentItem = NSMenuItem(title: "Agent Mode", action: #selector(toggleAgentMode), keyEquivalent: "")
         agentItem.target = self
         menu.addItem(agentItem)
+
+        let trackItem = NSMenuItem(title: "Set Up Precise Agent Tracking…", action: #selector(copyTrackingPrompt), keyEquivalent: "")
+        trackItem.target = self
+        menu.addItem(trackItem)
 
         lidItem = NSMenuItem(title: "Keep Awake With Lid Closed", action: #selector(toggleLidClosed), keyEquivalent: "")
         lidItem.target = self
@@ -135,6 +162,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleAgentMode() {
         if mode == .agent { setOff() } else { setAgent() }
+    }
+
+    @objc private func copyTrackingPrompt() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(Self.trackingPrompt, forType: .string)
+
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Setup prompt copied to your clipboard"
+        alert.informativeText = """
+        Paste it into any AI coding agent — Claude Code, Codex, Cursor, Aider, Hermes, whatever you use.
+
+        It detects which tool it's running in and wires that tool up to report live to Jolt — no manual config. Do it once per agent system you want tracked.
+
+        Until then, Jolt automatically falls back to counting agent processes, so Agent Mode still works with zero setup.
+        """
+        alert.alertStyle = .informational
+        alert.runModal()
     }
 
     @objc private func toggleLidClosed() {
@@ -326,10 +372,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return img
     }
 
-    // Count agent CLI sessions (terminal or IDE-launched), skipping background servers.
-    // Match is by the executable's lowercase name, so capitalized desktop apps
-    // (Claude.app, ChatGPT.app) don't get counted — only the CLI/agent binaries do.
+    // Live agent count: exact heartbeat count once any agent has been instrumented,
+    // otherwise a best-effort process scan so Agent Mode works with zero setup.
     private func countAgents() -> Int {
+        if let hb = heartbeatCount(), hb > 0 { return hb }
+        return processScanCount()
+    }
+
+    private var heartbeatDir: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".jolt/agents", isDirectory: true)
+    }
+
+    // nil = precise tracking not in use (directory absent). Otherwise the number of
+    // fresh heartbeat files; stale ones (>12h, presumed crashed) are cleaned up.
+    private func heartbeatCount() -> Int? {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(
+            at: heartbeatDir,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]) else { return nil }
+        let cutoff = Date().addingTimeInterval(-12 * 3600)
+        var n = 0
+        for f in files {
+            let mtime = (try? f.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if let mtime, mtime < cutoff { try? fm.removeItem(at: f); continue }
+            n += 1
+        }
+        return n
+    }
+
+    // Best-effort: count agent CLI sessions (terminal or IDE-launched), skipping
+    // background servers. Match is by the executable's lowercase name, so capitalized
+    // desktop apps (Claude.app, ChatGPT.app) don't get counted — only CLI binaries.
+    private func processScanCount() -> Int {
         let out = shellOutput("/bin/ps", ["-axo", "command="])
         let servers = ["bg-pty-host", "bg-spare", "daemon", "mcp-server", "--bg-", "app-server"]
         let binaries: Set<String> = [
