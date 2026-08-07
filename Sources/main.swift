@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var caffeinateProcess: Process?
     private var mode: Mode = .off
     private var endDate: Date?          // non-nil only for timed "awake" sessions
+    private var lidEndDate: Date?       // non-nil only for timed lid-closed sessions
     private var tickTimer: Timer?       // refreshes the timed countdown label
 
     // Agent-mode animation
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var agentItem: NSMenuItem!
     private var durationItems: [NSMenuItem] = []
     private var lidItem: NSMenuItem!
+    private var lidDurationItems: [NSMenuItem] = []
     private var loginItem: NSMenuItem!
 
     private let durations: [(String, Int)] = [
@@ -94,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
         updateUI()
+        restoreState()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -108,49 +111,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusLine = NSMenuItem(title: "Off", action: nil, keyEquivalent: "")
         statusLine.isEnabled = false
         menu.addItem(statusLine)
+        menu.addItem(.separator())
+
+        // ── Keep Awake ──
+        indefiniteItem = NSMenuItem(title: "Keep Awake", action: #selector(toggleIndefinite), keyEquivalent: "")
+        indefiniteItem.target = self
+        menu.addItem(indefiniteItem)
+
+        let durationParent = NSMenuItem(title: "Keep Awake For…", action: nil, keyEquivalent: "")
+        durationParent.submenu = makeDurations(#selector(startTimed(_:)), store: &durationItems)
+        menu.addItem(durationParent)
+
+        lidItem = NSMenuItem(title: "Keep Awake With Lid Closed", action: #selector(toggleLidClosed), keyEquivalent: "")
+        lidItem.target = self
+        menu.addItem(lidItem)
+
+        let lidDurationParent = NSMenuItem(title: "Keep Awake With Lid Closed For…", action: nil, keyEquivalent: "")
+        lidDurationParent.submenu = makeDurations(#selector(startLidTimed(_:)), store: &lidDurationItems)
+        menu.addItem(lidDurationParent)
+
+        menu.addItem(.separator())
+
+        // ── Agents ──
+        agentItem = NSMenuItem(title: "Agent Mode", action: #selector(toggleAgentMode), keyEquivalent: "")
+        agentItem.target = self
+        menu.addItem(agentItem)
 
         agentsParent = NSMenuItem(title: "Connected Agents", action: nil, keyEquivalent: "")
         agentsMenu = NSMenu()
         agentsParent.submenu = agentsMenu
         menu.addItem(agentsParent)
 
-        menu.addItem(.separator())
-
-        indefiniteItem = NSMenuItem(title: "Keep Awake", action: #selector(toggleIndefinite), keyEquivalent: "")
-        indefiniteItem.target = self
-        menu.addItem(indefiniteItem)
-
-        let durationParent = NSMenuItem(title: "Keep Awake For…", action: nil, keyEquivalent: "")
-        let durationMenu = NSMenu()
-        for (label, seconds) in durations {
-            let it = NSMenuItem(title: label, action: #selector(startTimed(_:)), keyEquivalent: "")
-            it.target = self
-            it.tag = seconds
-            durationMenu.addItem(it)
-            durationItems.append(it)
-        }
-        durationParent.submenu = durationMenu
-        menu.addItem(durationParent)
-
-        agentItem = NSMenuItem(title: "Agent Mode", action: #selector(toggleAgentMode), keyEquivalent: "")
-        agentItem.target = self
-        menu.addItem(agentItem)
-
         let trackItem = NSMenuItem(title: "Set Up Precise Agent Tracking…", action: #selector(copyTrackingPrompt), keyEquivalent: "")
         trackItem.target = self
         menu.addItem(trackItem)
 
-        lidItem = NSMenuItem(title: "Keep Awake With Lid Closed", action: #selector(toggleLidClosed), keyEquivalent: "")
-        lidItem.target = self
-        menu.addItem(lidItem)
-
         menu.addItem(.separator())
 
+        // ── App ──
         loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         loginItem.target = self
         menu.addItem(loginItem)
-
-        menu.addItem(.separator())
 
         let about = NSMenuItem(title: "About Jolt", action: #selector(about), keyEquivalent: "")
         about.target = self
@@ -165,11 +166,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
+    private func makeDurations(_ action: Selector, store: inout [NSMenuItem]) -> NSMenu {
+        let m = NSMenu()
+        for (label, seconds) in durations {
+            let it = NSMenuItem(title: label, action: action, keyEquivalent: "")
+            it.target = self
+            it.tag = seconds
+            m.addItem(it)
+            store.append(it)
+        }
+        return m
+    }
+
     // MARK: Mode control
     private func setOff() {
         stopCaffeinate()
         stopAgentAnimation()
         mode = .off
+        persistState()
         updateUI()
     }
 
@@ -177,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stopAgentAnimation()
         startCaffeinate(seconds: seconds)
         mode = .awake
+        persistState()
         updateUI()
     }
 
@@ -184,7 +199,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startCaffeinate(seconds: nil)
         mode = .agent
         startAgentAnimation()
+        persistState()
         updateUI()
+    }
+
+    // Remember the chosen mode so it resumes on next launch (e.g. Launch at Login).
+    private func persistState() {
+        let d = UserDefaults.standard
+        d.set(mode == .agent ? "agent" : (mode == .awake ? "awake" : "off"), forKey: "jolt.mode")
+        d.set(endDate?.timeIntervalSinceReferenceDate ?? 0, forKey: "jolt.endDate")
+    }
+
+    private func restoreState() {
+        switch UserDefaults.standard.string(forKey: "jolt.mode") {
+        case "agent":
+            setAgent()
+        case "awake":
+            let ts = UserDefaults.standard.double(forKey: "jolt.endDate")
+            if ts > 0 {
+                let remaining = Int(Date(timeIntervalSinceReferenceDate: ts).timeIntervalSinceNow)
+                if remaining > 5 { setAwake(seconds: remaining); return }
+                setOff(); return   // timer already elapsed while quit
+            }
+            setAwake(seconds: nil)
+        default:
+            break
+        }
     }
 
     // MARK: Actions
@@ -220,29 +260,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleLidClosed() {
-        if lidCloseAwakeEnabled() {
-            _ = runPrivileged("pmset -a disablesleep 0")
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = "Keep Awake With Lid Closed?"
-            alert.informativeText = """
-            This disables sleep entirely, so your Mac keeps running with the lid shut — handy for letting agents keep working.
+        if lidCloseAwakeEnabled() { disableLidClosed() }
+        else if confirmLidClosed(nil) { enableLidClosed(seconds: nil) }
+    }
 
-            • Requires your admin password.
-            • Your Mac will NOT sleep (lid open or closed) until you turn this off.
-            • With the lid closed there is no active cooling, so avoid heavy sustained loads for long stretches.
-            • The setting persists even if you quit Jolt (turn it off here, or run: sudo pmset -a disablesleep 0).
-            """
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Enable")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            if runPrivileged("pmset -a disablesleep 1"), mode == .off {
-                setAwake(seconds: nil)   // keep display/idle assertions consistent
-                return
-            }
+    @objc private func startLidTimed(_ sender: NSMenuItem) {
+        let label = durations.first { $0.1 == sender.tag }?.0 ?? "a while"
+        if confirmLidClosed(label) { enableLidClosed(seconds: sender.tag) }
+    }
+
+    private func confirmLidClosed(_ durationLabel: String?) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = durationLabel == nil
+            ? "Keep Awake With Lid Closed?"
+            : "Keep Awake With Lid Closed for \(durationLabel!)?"
+        var body = """
+        This disables system sleep so your Mac keeps running with the lid shut — handy for letting agents keep working.
+
+        • Requires your admin password.
+        • With the lid closed there is no active cooling, so avoid heavy sustained loads for long stretches.
+        """
+        body += durationLabel == nil
+            ? "\n• Stays on (lid open or closed) until you turn it off; persists even if you quit Jolt."
+            : "\n• Auto-reverts after \(durationLabel!)."
+        alert.informativeText = body
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Enable")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    // One admin prompt: enables disablesleep now and, if timed, schedules a root
+    // background revert (JOLT_LID_REVERT tag lets a later action cancel a pending one).
+    private func enableLidClosed(seconds: Int?) {
+        var cmd = "pkill -f JOLT_LID_REVERT 2>/dev/null; pmset -a disablesleep 1"
+        if let s = seconds {
+            cmd += "; nohup sh -c 'sleep \(s); pmset -a disablesleep 0' JOLT_LID_REVERT >/dev/null 2>&1 &"
         }
+        if runPrivileged(cmd) {
+            lidEndDate = seconds.map { Date().addingTimeInterval(TimeInterval($0)) }
+            if mode == .off { setAwake(seconds: nil) }   // fill icon / keep display assertions
+        }
+        updateUI()
+    }
+
+    private func disableLidClosed() {
+        _ = runPrivileged("pkill -f JOLT_LID_REVERT 2>/dev/null; pmset -a disablesleep 0")
+        lidEndDate = nil
         updateUI()
     }
 
@@ -382,7 +447,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
         var args = ["-d", "-i", "-s", "-u"]   // display, idle, system(AC), declare user active
-        if let s = seconds { args += ["-t", String(s)] }
+        if let s = seconds {
+            args += ["-t", String(s)]         // timed: caffeinate self-exits at timeout
+        } else {
+            // indefinite: tie lifetime to Jolt's PID so it can't outlive us even on a hard kill
+            args += ["-w", String(ProcessInfo.processInfo.processIdentifier)]
+        }
         p.arguments = args
         p.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async { self?.handleCaffeinateExit() }
@@ -604,6 +674,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: UI
     private func updateUI() {
         let lidClosed = lidCloseAwakeEnabled()
+        if !lidClosed { lidEndDate = nil }   // reflect an auto-revert that already fired
 
         // Icon + title
         if mode == .agent {
@@ -627,7 +698,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ? "Agent Mode — 1 agent running"
                 : "Agent Mode — \(agentCount) agents running"
         } else if lidClosed {
-            statusLine.title = "Awake — even with lid closed"
+            if let end = lidEndDate {
+                let fmt = DateFormatter(); fmt.timeStyle = .short
+                statusLine.title = "Awake, lid closed, until \(fmt.string(from: end))"
+            } else {
+                statusLine.title = "Awake — even with lid closed"
+            }
         } else if mode == .awake {
             if let end = endDate {
                 let fmt = DateFormatter(); fmt.timeStyle = .short
@@ -646,7 +722,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for it in durationItems {
             it.state = (mode == .awake && endDate != nil && it.tag == currentTimedSeconds) ? .on : .off
         }
-        lidItem.state = lidClosed ? .on : .off
+        lidItem.state = (lidClosed && lidEndDate == nil) ? .on : .off
+        for it in lidDurationItems {
+            it.state = (lidClosed && lidEndDate != nil && it.tag == currentLidSeconds) ? .on : .off
+        }
         loginItem.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
 
         // Connected-agents list (refreshed whenever the menu opens)
@@ -668,6 +747,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var currentTimedSeconds: Int {
         guard let end = endDate else { return -1 }
+        let remaining = end.timeIntervalSinceNow
+        return durations.map { $0.1 }.min(by: { abs(Double($0) - remaining) < abs(Double($1) - remaining) }) ?? -1
+    }
+
+    private var currentLidSeconds: Int {
+        guard let end = lidEndDate else { return -1 }
         let remaining = end.timeIntervalSinceNow
         return durations.map { $0.1 }.min(by: { abs(Double($0) - remaining) < abs(Double($1) - remaining) }) ?? -1
     }

@@ -21,8 +21,9 @@ Click the coffee cup in your menu bar to stop your Mac from sleeping. Click agai
 - **Keep Awake** — stay awake indefinitely.
 - **Keep Awake For…** — 15 min, 30 min, 1 hour, 2 hours, or 5 hours, then auto-off.
 - **Agent Mode** — turns the menu bar into a green Knight Rider scanner with a live count of running AI coding agents; the sweep speeds up as more agents come online.
-- **Keep Awake With Lid Closed** — disables system sleep entirely so your Mac keeps running with the lid shut (great for letting background jobs or agents keep working). Requires your admin password.
+- **Keep Awake With Lid Closed** (and a timed **… For…** variant) — disables system sleep so your Mac keeps running with the lid shut (great for letting background jobs or agents keep working). Requires your admin password; the timed version auto-reverts.
 - **Launch at Login** — start Jolt automatically.
+- **Remembers your last mode** and resumes it on launch, so Launch at Login can bring you straight back into Agent Mode or Keep Awake.
 
 The icon fills in when awake mode is on, and the top of the menu always tells you the current state.
 
