@@ -1,0 +1,6 @@
+# Build artifacts (the DMG is shipped as a GitHub Release asset, not committed)
+build/
+art/Jolt.iconset/
+
+# macOS
+.DS_Store
