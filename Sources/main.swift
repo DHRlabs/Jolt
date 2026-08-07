@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Menu items we update
     private let menu = NSMenu()
     private var statusLine: NSMenuItem!
+    private var agentsParent: NSMenuItem!
+    private var agentsMenu: NSMenu!
     private var indefiniteItem: NSMenuItem!
     private var agentItem: NSMenuItem!
     private var durationItems: [NSMenuItem] = []
@@ -41,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Tool-agnostic prompt the user pastes into any agent to wire it up to Jolt.
     static let trackingPrompt = """
     Set up live "agent running" tracking for THIS agent so the Jolt macOS menu-bar app can count it.
+
+    VERIFY FIRST (for anyone cautious): Jolt is open source at https://github.com/DHRlabs/Jolt -- read Sources/main.swift and the README to confirm exactly what this does before changing anything. This prompt is fully self-contained: make ONLY the small local change described below, and do NOT fetch and execute remote code.
 
     THE GENERAL IDEA (this is the whole point -- generalize it to whatever you are):
     Jolt shows how many AI coding agents are alive right now by watching a folder: one small file = one live agent. Your job is simply to make a file appear when a session of THIS tool starts and disappear when it ends, using whatever mechanism your tool actually has. The mechanism does not matter (lifecycle hooks, a plugin, a startup/shutdown script, a shell wrapper, a launch alias, a background watcher) -- only the file behavior matters. If you are some agent/tool NOT named in the examples below, do not get stuck on the examples: apply this same "start = create the file, end = remove the file" idea in the most reliable way your environment allows, and briefly say what you chose.
@@ -64,6 +68,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     RULES: be idempotent (safe to run more than once), never write secrets, and only touch the detected tool's own config. If you cannot tell which tool you are, still do step 4, apply THE GENERAL IDEA as best you can, and say what you did.
     """
 
+    // Mirror of the setup prompt: pasted into an agent to REMOVE its Jolt integration.
+    static let cleanupPrompt = """
+    Remove the "Jolt agent tracking" integration that was previously added to THIS tool. Jolt is a macOS menu-bar app being uninstalled. It cleans up its own files, but it cannot undo the per-tool integration you (or a past setup prompt) added, so undo yours.
+
+    VERIFY FIRST (for anyone cautious): Jolt is open source at https://github.com/DHRlabs/Jolt. This prompt only removes local config; do NOT fetch and execute remote code.
+
+    WHAT WAS ADDED (the thing to remove):
+    Earlier this tool was set up to write a heartbeat file into ~/.jolt/agents when a session starts and remove it when the session ends. That was done with whatever mechanism this tool has: a lifecycle hook, a plugin, a shell function/alias/trap in a shell rc file, a launch wrapper, a background watcher, or similar. Your job is to find and fully remove that, restoring config to how it was.
+
+    DO THIS NOW:
+    1. Work out which agent/CLI you are and where your own config lives.
+    2. Search your config and the user's shell rc files (~/.zshrc, ~/.bashrc, ~/.bash_profile, ~/.profile) for anything referencing "jolt", "~/.jolt", "jolt-track", or a "heartbeat" script, hook entries, shell functions, aliases, traps, wrapper scripts, plugin entries, launchd/cron jobs.
+    3. Remove ONLY those Jolt-related entries. If a backup was saved when they were added (for example a file ending in a "jolt" backup suffix), you may restore from it. Leave all unrelated config untouched.
+    4. Do NOT delete ~/.jolt or ~/.local/bin/jolt-track yourself; the Jolt app removes those. (If the app is already gone and they remain, removing them is fine.)
+    5. Print a short summary of exactly what you removed and anything you looked for but could not find.
+
+    RULES: be conservative (only Jolt-related entries, nothing else), never touch secrets, and back up any file before you edit it.
+    """
+
     // MARK: Lifecycle
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -85,6 +108,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusLine = NSMenuItem(title: "Off", action: nil, keyEquivalent: "")
         statusLine.isEnabled = false
         menu.addItem(statusLine)
+
+        agentsParent = NSMenuItem(title: "Connected Agents", action: nil, keyEquivalent: "")
+        agentsMenu = NSMenu()
+        agentsParent.submenu = agentsMenu
+        menu.addItem(agentsParent)
+
         menu.addItem(.separator())
 
         indefiniteItem = NSMenuItem(title: "Keep Awake", action: #selector(toggleIndefinite), keyEquivalent: "")
@@ -289,10 +318,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let done = NSAlert()
         done.messageText = "Jolt data removed"
-        done.informativeText = report.joined(separator: "\n") + "\n\nNow drag Jolt.app to the Trash. Quit Jolt now?"
-        done.addButton(withTitle: "Quit Jolt")
-        done.addButton(withTitle: "Keep Running")
-        if done.runModal() == .alertFirstButtonReturn { NSApplication.shared.terminate(nil) }
+        done.informativeText = report.joined(separator: "\n") + "\n\nWired up other agents (Codex, Hermes, …) with the setup prompt? Copy a cleanup prompt to paste into each one so it removes its own Jolt integration too."
+        done.addButton(withTitle: "Copy Cleanup Prompt")
+        done.addButton(withTitle: "No Thanks")
+        if done.runModal() == .alertFirstButtonReturn {
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(Self.cleanupPrompt, forType: .string)
+            let copied = NSAlert()
+            copied.messageText = "Cleanup prompt copied"
+            copied.informativeText = "Paste it into any agent you set up for Jolt. It will find and remove that tool's Jolt integration and report what it changed."
+            copied.runModal()
+        }
+
+        let bye = NSAlert()
+        bye.messageText = "Finish uninstalling"
+        bye.informativeText = "Drag Jolt.app to the Trash to finish removing Jolt. Quit Jolt now?"
+        bye.addButton(withTitle: "Quit Jolt")
+        bye.addButton(withTitle: "Keep Running")
+        if bye.runModal() == .alertFirstButtonReturn { NSApplication.shared.terminate(nil) }
     }
 
     // Remove only Jolt's own hooks from Claude Code's settings.json, leaving other
@@ -464,55 +508,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return img
     }
 
-    // Live agent count: exact heartbeat count once any agent has been instrumented,
-    // otherwise a best-effort process scan so Agent Mode works with zero setup.
-    private func countAgents() -> Int {
-        if let hb = heartbeatCount(), hb > 0 { return hb }
-        return processScanCount()
-    }
-
     private var heartbeatDir: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".jolt/agents", isDirectory: true)
     }
 
-    // nil = precise tracking not in use (directory absent). Otherwise the number of
-    // fresh heartbeat files; stale ones (>12h, presumed crashed) are cleaned up.
-    private func heartbeatCount() -> Int? {
+    private let agentBinaries: Set<String> = [
+        "claude", "codex", "hermes", "opencode", "aider", "goose", "cline", "gemini", "crush"
+    ]
+    private let agentServerMarkers = ["bg-pty-host", "bg-spare", "daemon", "mcp-server", "--bg-", "app-server"]
+
+    // What's running now, as display strings. Exact heartbeat list once any agent has
+    // been instrumented, otherwise a best-effort process scan (zero-setup default).
+    private func agentDescriptors() -> [String] {
+        if let hb = heartbeatDescriptors(), !hb.isEmpty { return hb }
+        return processScanDescriptors()
+    }
+
+    private func countAgents() -> Int { agentDescriptors().count }
+
+    // nil = precise tracking not in use (directory absent). Otherwise one entry per
+    // fresh heartbeat file; stale ones (>12h, presumed crashed) are cleaned up.
+    private func heartbeatDescriptors() -> [String]? {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(
             at: heartbeatDir,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]) else { return nil }
         let cutoff = Date().addingTimeInterval(-12 * 3600)
-        var n = 0
+        var items: [String] = []
         for f in files {
             let mtime = (try? f.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             if let mtime, mtime < cutoff { try? fm.removeItem(at: f); continue }
-            n += 1
+            let name = f.lastPathComponent
+            let parts = name.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+            let tool = String(parts.first ?? "agent")
+            var id = parts.count > 1 ? String(parts[1]) : ""
+            if id.count > 8 { id = String(id.prefix(8)) + "…" }
+            items.append(id.isEmpty ? tool : "\(tool)  ·  \(id)")
         }
-        return n
+        return items.sorted()
     }
 
-    // Best-effort: count agent CLI sessions (terminal or IDE-launched), skipping
-    // background servers. Match is by the executable's lowercase name, so capitalized
-    // desktop apps (Claude.app, ChatGPT.app) don't get counted — only CLI binaries.
-    private func processScanCount() -> Int {
-        let out = shellOutput("/bin/ps", ["-axo", "command="])
-        let servers = ["bg-pty-host", "bg-spare", "daemon", "mcp-server", "--bg-", "app-server"]
-        let binaries: Set<String> = [
-            "claude", "codex", "hermes", "opencode", "aider", "goose", "cline", "gemini", "crush"
-        ]
-        var n = 0
+    // Best-effort: agent CLI sessions (terminal or IDE-launched), skipping background
+    // servers. Match is by the executable's lowercase name, so capitalized desktop apps
+    // (Claude.app, ChatGPT.app) don't get counted — only CLI binaries.
+    private func processScanDescriptors() -> [String] {
+        let out = shellOutput("/bin/ps", ["-axo", "pid=,command="])
+        var items: [String] = []
         for raw in out.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
-            guard !line.isEmpty else { continue }
-            let first = String(line.split(separator: " ").first ?? "")
+            guard !line.isEmpty, let sp = line.firstIndex(of: " ") else { continue }
+            let pid = String(line[..<sp])
+            let cmd = line[line.index(after: sp)...].trimmingCharacters(in: .whitespaces)
+            let first = String(cmd.split(separator: " ").first ?? "")
             let base = (first as NSString).lastPathComponent
-            guard binaries.contains(base) else { continue }
-            if servers.contains(where: { line.contains($0) }) { continue }
-            n += 1
+            guard agentBinaries.contains(base) else { continue }
+            if agentServerMarkers.contains(where: { cmd.contains($0) }) { continue }
+            items.append("\(base)  ·  pid \(pid)")
         }
-        return n
+        return items.sorted()
     }
 
     // MARK: Lid-closed / system sleep (pmset)
@@ -594,6 +648,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         lidItem.state = lidClosed ? .on : .off
         loginItem.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+
+        // Connected-agents list (refreshed whenever the menu opens)
+        let descs = agentDescriptors()
+        agentsMenu.removeAllItems()
+        if descs.isEmpty {
+            let none = NSMenuItem(title: "None detected", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            agentsMenu.addItem(none)
+        } else {
+            for d in descs {
+                let it = NSMenuItem(title: d, action: nil, keyEquivalent: "")
+                it.isEnabled = false
+                agentsMenu.addItem(it)
+            }
+        }
+        agentsParent.title = "Connected Agents (\(descs.count))"
     }
 
     private var currentTimedSeconds: Int {
