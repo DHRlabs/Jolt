@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var scanDir = 1
     private var agentCount = 0
     private let scanDots = 8
+    private var energy: [CGFloat] = []   // per-dot brightness, decays each tick (comet trail)
 
     // MARK: Menu items we update
     private let menu = NSMenu()
@@ -245,16 +246,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Agent mode — scanner + count
     private func startAgentAnimation() {
+        energy = Array(repeating: 0, count: scanDots)
         scanHead = 0; scanDir = 1
-        updateAgentCount()
+        agentCount = countAgents()
+        updateCountLabels()
         tickScanner()
-        scannerTimer?.invalidate()
-        scannerTimer = Timer.scheduledTimer(withTimeInterval: 0.09, repeats: true) { [weak self] _ in
-            self?.tickScanner()
-        }
+        scheduleScanner()
         countTimer?.invalidate()
         countTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.updateAgentCount()
+            self?.refreshAgentCount()
         }
     }
 
@@ -263,42 +263,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         countTimer?.invalidate(); countTimer = nil
     }
 
+    // Slower by default, quicker as more agents come online
+    private func scannerInterval() -> TimeInterval {
+        return max(0.05, 0.18 - 0.022 * Double(agentCount))
+    }
+
+    private func scheduleScanner() {
+        scannerTimer?.invalidate()
+        scannerTimer = Timer.scheduledTimer(withTimeInterval: scannerInterval(), repeats: true) { [weak self] _ in
+            self?.tickScanner()
+        }
+    }
+
     private func tickScanner() {
         scanHead += scanDir
         if scanHead >= scanDots - 1 { scanHead = scanDots - 1; scanDir = -1 }
         else if scanHead <= 0 { scanHead = 0; scanDir = 1 }
-        statusItem.button?.image = scannerImage(head: scanHead, dir: scanDir)
+        for j in 0..<energy.count { energy[j] *= 0.58 }   // fade the trail
+        energy[scanHead] = 1.0                            // light the head
+        statusItem.button?.image = scannerImage()
     }
 
-    private func updateAgentCount() {
-        agentCount = countAgents()
-        if mode == .agent {
-            statusItem.button?.title = " \(agentCount)"
-            statusLine.title = agentCount == 1
-                ? "Agent Mode — 1 agent running"
-                : "Agent Mode — \(agentCount) agents running"
-        }
+    private func refreshAgentCount() {
+        let n = countAgents()
+        if n != agentCount { agentCount = n; scheduleScanner() }   // re-tempo the sweep
+        updateCountLabels()
     }
 
-    private func scannerImage(head: Int, dir: Int) -> NSImage {
+    private func updateCountLabels() {
+        guard mode == .agent else { return }
+        statusItem.button?.title = " \(agentCount)"
+        statusLine.title = agentCount == 1
+            ? "Agent Mode — 1 agent running"
+            : "Agent Mode — \(agentCount) agents running"
+    }
+
+    private func scannerImage() -> NSImage {
         let dot: CGFloat = 4.6
         let gap: CGFloat = 2.2
         let step = dot + gap
         let w = CGFloat(scanDots) * step
         let h: CGFloat = 18
-        let dots = scanDots
+        let e = energy
         let img = NSImage(size: NSSize(width: w, height: h), flipped: false) { _ in
-            for i in 0..<dots {
-                // behind > 0 = trailing behind the head, 0 = the head, < 0 = ahead of it
-                let behind = (head - i) * dir
+            for i in 0..<e.count {
+                let v = e[i]
                 let color: NSColor
-                if behind == 0 {
-                    color = NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)      // white head
-                } else if behind > 0 {
-                    let a = max(0.06, CGFloat(0.72 * pow(0.6, Double(behind - 1))))        // green tail, fading
-                    color = NSColor(srgbRed: 0.15, green: 1.0, blue: 0.30, alpha: a)
+                if v > 0.99 {
+                    color = NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)       // white head
                 } else {
-                    color = NSColor(srgbRed: 0.15, green: 1.0, blue: 0.30, alpha: 0.06)    // unlit LED ahead
+                    let a = max(0.06, v)                                                   // green tail → unlit
+                    color = NSColor(srgbRed: 0.15, green: 1.0, blue: 0.30, alpha: a)
                 }
                 color.setFill()
                 let x = CGFloat(i) * step
@@ -311,11 +326,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return img
     }
 
-    // Count top-level Claude Code / Codex CLI sessions (skip the background helpers)
+    // Count agent CLI sessions (terminal or IDE-launched), skipping background servers.
+    // Match is by the executable's lowercase name, so capitalized desktop apps
+    // (Claude.app, ChatGPT.app) don't get counted — only the CLI/agent binaries do.
     private func countAgents() -> Int {
         let out = shellOutput("/bin/ps", ["-axo", "command="])
-        let helpers = ["bg-pty-host", "bg-spare", "daemon", "mcp-server", "--bg-"]
-        let binaries: Set<String> = ["claude", "codex"]
+        let servers = ["bg-pty-host", "bg-spare", "daemon", "mcp-server", "--bg-", "app-server"]
+        let binaries: Set<String> = [
+            "claude", "codex", "hermes", "opencode", "aider", "goose", "cline", "gemini", "crush"
+        ]
         var n = 0
         for raw in out.split(separator: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
@@ -323,7 +342,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let first = String(line.split(separator: " ").first ?? "")
             let base = (first as NSString).lastPathComponent
             guard binaries.contains(base) else { continue }
-            if helpers.contains(where: { line.contains($0) }) { continue }
+            if servers.contains(where: { line.contains($0) }) { continue }
             n += 1
         }
         return n
