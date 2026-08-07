@@ -42,23 +42,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static let trackingPrompt = """
     Set up live "agent running" tracking for THIS agent so the Jolt macOS menu-bar app can count it.
 
-    HEARTBEAT CONTRACT (how Jolt counts agents):
+    THE GENERAL IDEA (this is the whole point -- generalize it to whatever you are):
+    Jolt shows how many AI coding agents are alive right now by watching a folder: one small file = one live agent. Your job is simply to make a file appear when a session of THIS tool starts and disappear when it ends, using whatever mechanism your tool actually has. The mechanism does not matter (lifecycle hooks, a plugin, a startup/shutdown script, a shell wrapper, a launch alias, a background watcher) -- only the file behavior matters. If you are some agent/tool NOT named in the examples below, do not get stuck on the examples: apply this same "start = create the file, end = remove the file" idea in the most reliable way your environment allows, and briefly say what you chose.
+
+    HEARTBEAT CONTRACT (the interface -- all Jolt cares about):
     - Directory: ~/.jolt/agents  (create if missing: mkdir -p ~/.jolt/agents)
-    - While a session is active, it keeps one uniquely-named file in that directory, e.g. <tool>-<pid>. An empty file is fine; optional one-line JSON contents: {"agent":"<tool>","pid":<pid>}
-    - When the session ends, that file is deleted.
+    - While a session is active, keep one uniquely-named file in it, e.g. <tool>-<pid>. An empty file is fine; optional one-line JSON contents: {"agent":"<tool>","pid":<pid>}
+    - When the session ends, delete that file.
     - Jolt counts the files = number of live agents, and deletes files older than 12h to recover from crashes. Re-touching the file periodically is welcome but optional.
 
     DO THIS NOW:
-    1. Work out which agent/CLI you are and where your own config lives. Examples: Claude Code -> ~/.claude/settings.json hooks; Codex -> its config/hooks; Aider, Cursor, Hermes, OpenCode, Goose, Gemini CLI, etc. -> their own mechanisms.
-    2. If this tool supports session lifecycle hooks (start / stop / exit, or per-turn events), add hooks — merged into existing config, backed up first, without clobbering anything — that do:
+    1. Work out which agent/CLI you are and where your own config lives. Examples: Claude Code -> ~/.claude/settings.json hooks; Codex -> its config/hooks; Aider, Cursor, Hermes, OpenCode, Goose, Gemini CLI, etc. -> their own mechanisms. Not in this list? Fall back to THE GENERAL IDEA above and pick the best mechanism you have.
+    2. If this tool supports session lifecycle hooks (start / stop / exit, or per-turn events), add hooks -- merged into existing config, backed up first, without clobbering anything -- that do:
          on start:  mkdir -p ~/.jolt/agents && : > ~/.jolt/agents/<tool>-$PPID
          on end:    rm -f ~/.jolt/agents/<tool>-$PPID
        Use whatever stable per-session id your tool exposes ($PPID or the tool's own session id are both fine).
-    3. If this tool has NO hook system, achieve the same create-on-start / delete-on-exit another safe way (a shell function plus an exit trap in the user's shell rc, or the tool's startup script) and explain what you did.
+    3. If this tool has NO hook system, achieve the same create-on-start / delete-on-exit another safe way (a shell function plus an exit trap in the user's shell rc, or a wrapper around the launch command) and explain what you did.
     4. Either way, create the heartbeat file for the CURRENT session right now so it shows up in Jolt immediately.
     5. Print a short summary: which agent you detected, exactly what you changed, and how to undo it.
 
-    RULES: be idempotent (safe to run more than once), never write secrets, and only touch the detected tool's own config. If you cannot tell which tool you are, just do step 4 and say so.
+    RULES: be idempotent (safe to run more than once), never write secrets, and only touch the detected tool's own config. If you cannot tell which tool you are, still do step 4, apply THE GENERAL IDEA as best you can, and say what you did.
     """
 
     // MARK: Lifecycle
