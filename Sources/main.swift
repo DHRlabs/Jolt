@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var endDate: Date?        // non-nil only for timed keep-awake
     private var lidEndDate: Date?     // non-nil only for timed lid-closed
     private var tickTimer: Timer?
+    private var pulseTimer: Timer?    // breathes the lid-closed status line while the menu is open
+    private var pulsePhase: CGFloat = 0
 
     private let menu = NSMenu()
     private var statusLine: NSMenuItem!
@@ -35,7 +37,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) { stopCaffeinate() }
-    func menuWillOpen(_ menu: NSMenu) { updateUI() }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        updateUI()
+        if lidOn() { startPulse() }
+    }
+    func menuDidClose(_ menu: NSMenu) { stopPulse() }
+
+    // Breathing purple on the lid-closed status line (runs only while the menu is open).
+    private func startPulse() {
+        stopPulse()
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.pulseTick() }
+        RunLoop.main.add(t, forMode: .common)
+        pulseTimer = t
+    }
+    private func stopPulse() { pulseTimer?.invalidate(); pulseTimer = nil }
+    private func pulseTick() {
+        pulsePhase += 0.13
+        let t = (sin(pulsePhase) + 1) / 2                       // 0…1
+        let color = NSColor(calibratedHue: 0.78, saturation: 0.75,
+                            brightness: 0.55 + 0.45 * t, alpha: 1)  // radiating purple
+        statusLine.attributedTitle = NSAttributedString(
+            string: statusLine.title, attributes: [.foregroundColor: color])
+    }
 
     // MARK: Menu
     private func buildMenu() {
@@ -85,7 +109,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Actions
     @objc private func toggleAwake() {
-        if isActive && endDate == nil { stopCaffeinate() } else { startCaffeinate(seconds: nil) }
+        if lidOn() {
+            // Switch from lid-closed to plain keep-awake (turning lid-closed off needs admin).
+            _ = runPrivileged("pkill -f JOLT_LID_REVERT 2>/dev/null; pmset -a disablesleep 0")
+            lidEndDate = nil
+            if !isActive { startCaffeinate(seconds: nil) }
+        } else if isActive && endDate == nil {
+            stopCaffeinate()
+        } else {
+            startCaffeinate(seconds: nil)
+        }
         updateUI()
     }
 
@@ -260,6 +293,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ?? "Awake — indefinitely"
         } else {
             statusLine.title = "Off — Mac can sleep"
+        }
+
+        // Lid-closed gets a purple status line (the menu-open pulse breathes it brighter).
+        if lid {
+            statusLine.attributedTitle = NSAttributedString(string: statusLine.title,
+                attributes: [.foregroundColor: NSColor(calibratedHue: 0.78, saturation: 0.75, brightness: 0.9, alpha: 1)])
+        } else {
+            statusLine.attributedTitle = nil
         }
 
         let plainAwake = isActive && endDate == nil && !lid
