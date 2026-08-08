@@ -8,8 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var endDate: Date?        // non-nil only for timed keep-awake
     private var lidEndDate: Date?     // non-nil only for timed lid-closed
     private var tickTimer: Timer?
-    private var pulseTimer: Timer?    // breathes the lid-closed status line while the menu is open
-    private var pulsePhase: CGFloat = 0
+    private var pulseTimer: Timer?    // animates the lid-closed status comet while the menu is open
+    private var sEnergy: [CGFloat] = Array(repeating: 0, count: 9)
+    private var sHead = 0, sDir = 1
 
     private let menu = NSMenu()
     private var statusLine: NSMenuItem!
@@ -53,12 +54,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     private func stopPulse() { pulseTimer?.invalidate(); pulseTimer = nil }
     private func pulseTick() {
-        pulsePhase += 0.13
-        let t = (sin(pulsePhase) + 1) / 2                       // 0…1
-        let color = NSColor(calibratedHue: 0.78, saturation: 0.75,
-                            brightness: 0.55 + 0.45 * t, alpha: 1)  // radiating purple
-        statusLine.attributedTitle = NSAttributedString(
-            string: statusLine.title, attributes: [.foregroundColor: color])
+        sHead += sDir
+        if sHead >= sEnergy.count - 1 { sHead = sEnergy.count - 1; sDir = -1 }
+        else if sHead <= 0 { sHead = 0; sDir = 1 }
+        for i in 0..<sEnergy.count { sEnergy[i] *= 0.6 }
+        sEnergy[sHead] = 1.0
+        statusLine.image = purpleComet()
+    }
+
+    private func purpleComet() -> NSImage {
+        let dot: CGFloat = 4.0, gap: CGFloat = 2.0
+        let step = dot + gap
+        let w = CGFloat(sEnergy.count) * step, h: CGFloat = 12
+        let e = sEnergy
+        let img = NSImage(size: NSSize(width: w, height: h), flipped: false) { _ in
+            for i in 0..<e.count {
+                let v = e[i]
+                let color: NSColor = v > 0.99
+                    ? .white
+                    : NSColor(srgbRed: 0.62, green: 0.35, blue: 1.0, alpha: max(0.10, v))  // purple trail
+                color.setFill()
+                NSBezierPath(ovalIn: NSRect(x: CGFloat(i) * step, y: (h - dot) / 2, width: dot, height: dot)).fill()
+            }
+            return true
+        }
+        img.isTemplate = false
+        return img
     }
 
     // MARK: Menu
@@ -295,13 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusLine.title = "Off — Mac can sleep"
         }
 
-        // Lid-closed gets a purple status line (the menu-open pulse breathes it brighter).
-        if lid {
-            statusLine.attributedTitle = NSAttributedString(string: statusLine.title,
-                attributes: [.foregroundColor: NSColor(calibratedHue: 0.78, saturation: 0.75, brightness: 0.9, alpha: 1)])
-        } else {
-            statusLine.attributedTitle = nil
-        }
+        if !lid { statusLine.image = nil }   // purple comet (driven by the pulse) shows only while lid-closed
 
         let plainAwake = isActive && endDate == nil && !lid
         awakeItem.state = plainAwake ? .on : .off
