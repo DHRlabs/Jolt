@@ -20,7 +20,7 @@ Click the coffee cup in your menu bar to stop your Mac from sleeping. Click agai
 
 - **Keep Awake** — stay awake indefinitely.
 - **Keep Awake For…** — 15 min, 30 min, 1 hour, 2 hours, or 5 hours, then auto-off.
-- **Agent Mode** — turns the menu bar into a green Knight Rider scanner with a live count of running AI coding agents; the sweep speeds up as more agents come online.
+- **Agent Mode** — a live count of running AI coding agents in the menu bar, with a scanner that speeds up as more come online.
 - **Keep Awake With Lid Closed** (and a timed **… For…** variant) — disables system sleep so your Mac keeps running with the lid shut (great for letting background jobs or agents keep working). Requires your admin password; the timed version auto-reverts.
 - **Launch at Login** — start Jolt automatically.
 - **Remembers your last mode** and resumes it on launch, so Launch at Login can bring you straight back into Agent Mode or Keep Awake.
@@ -29,7 +29,7 @@ The icon fills in when awake mode is on, and the top of the menu always tells yo
 
 ## Agent Mode
 
-Turn it on and the coffee cup becomes a green scanner (white head, fading green comet trail) with a number next to it: how many AI coding agents are running. The sweep gets faster as the count climbs.
+Turn it on and the menu-bar icon shows a live count of how many AI coding agents are running, with an animated scanner that sweeps faster as the count climbs.
 
 **How the count works, with zero setup:** Jolt scans running processes for known agent CLIs (`claude`, `codex`, `hermes`, `opencode`, `aider`, `goose`, `cline`, `gemini`, `crush`) and skips their background servers. This catches agents launched from a terminal *or* from an IDE's integrated terminal / extension. It can't see an IDE's built-in assistant (Cursor Composer, Copilot) because those talk to the cloud without a local agent process.
 

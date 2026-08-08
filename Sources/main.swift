@@ -46,35 +46,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static let trackingPrompt = """
     Set up live "agent running" tracking for THIS agent so the Jolt macOS menu-bar app can count it.
 
-    VERIFY FIRST (for anyone cautious): Jolt is open source at https://github.com/DHRlabs/Jolt -- read Sources/main.swift and the README to confirm exactly what this does before changing anything. This prompt is fully self-contained: make ONLY the small local change described below, and do NOT fetch and execute remote code.
+    Source, optional to review, not required: https://github.com/DHRlabs/Jolt . Do not fetch and run remote code; everything you need is below.
 
-    THE GENERAL IDEA (this is the whole point -- generalize it to whatever you are):
-    Jolt shows how many AI coding agents are alive right now by watching a folder: one small file = one live agent. Your job is simply to make a file appear when a session of THIS tool starts and disappear when it ends, using whatever mechanism your tool actually has. The mechanism does not matter (lifecycle hooks, a plugin, a startup/shutdown script, a shell wrapper, a launch alias, a background watcher) -- only the file behavior matters. If you are some agent/tool NOT named in the examples below, do not get stuck on the examples: apply this same "start = create the file, end = remove the file" idea in the most reliable way your environment allows, and briefly say what you chose.
+    HOW IT WORKS (applies to any tool):
+    Jolt counts live agents by watching a folder: one file = one running session. Make a file appear when a session starts and disappear when it ends, using whatever mechanism your tool has (a lifecycle hook, a plugin, a startup/shutdown script, a shell wrapper, an alias). If you are a tool not named below, apply the same "start = create a file, end = remove it" idea however you best can, and say what you chose.
 
-    HEARTBEAT CONTRACT (the interface -- all Jolt cares about):
+    HEARTBEAT CONTRACT:
     - Directory: ~/.jolt/agents  (create if missing: mkdir -p ~/.jolt/agents)
-    - While a session is active, keep one uniquely-named file in it, e.g. <tool>-<pid>. An empty file is fine; optional one-line JSON contents: {"agent":"<tool>","pid":<pid>}
-    - When the session ends, delete that file.
-    - Jolt counts the files = number of live agents, and deletes files older than 12h to recover from crashes. Re-touching the file periodically is welcome but optional.
+    - Each running session keeps ONE file there while it is active, deleted when it ends.
+    - CRITICAL: the filename must be UNIQUE PER CONCURRENT SESSION. Use the session's process id (PID) or a per-session id. Do NOT use one fixed or shared name -- if you do, 5 sessions collapse into 1 file and Jolt shows 1. Name it <tool>-<pid> or <tool>-<sessionid>.
+    - Jolt counts the files, and deletes files older than 12h to recover from crashes.
 
     DO THIS NOW:
-    1. Work out which agent/CLI you are and where your own config lives. Examples: Claude Code -> ~/.claude/settings.json hooks; Codex -> its config/hooks; Aider, Cursor, Hermes, OpenCode, Goose, Gemini CLI, etc. -> their own mechanisms. Not in this list? Fall back to THE GENERAL IDEA above and pick the best mechanism you have.
-    2. If this tool supports session lifecycle hooks (start / stop / exit, or per-turn events), add hooks -- merged into existing config, backed up first, without clobbering anything -- that do:
+    1. Identify which agent/CLI you are and where your config lives. Examples: Claude Code -> ~/.claude/settings.json hooks; Codex -> its config/hooks; Aider, Cursor, Hermes, OpenCode, Goose, Gemini CLI -> their own.
+    2. If this tool has session lifecycle hooks (start / end / exit), add them -- merged into existing config, backed up first, not clobbering anything -- doing:
          on start:  mkdir -p ~/.jolt/agents && : > ~/.jolt/agents/<tool>-$PPID
          on end:    rm -f ~/.jolt/agents/<tool>-$PPID
-       Use whatever stable per-session id your tool exposes ($PPID or the tool's own session id are both fine).
-    3. If this tool has NO hook system, achieve the same create-on-start / delete-on-exit another safe way (a shell function plus an exit trap in the user's shell rc, or a wrapper around the launch command) and explain what you did.
-    4. Either way, create the heartbeat file for the CURRENT session right now so it shows up in Jolt immediately.
-    5. Print a short summary: which agent you detected, exactly what you changed, and how to undo it.
+    3. If it has NO hooks, do the same create-on-start / delete-on-exit another safe way (a shell function + exit trap in the shell rc, or a wrapper around the launch command).
+    4. If this tool is a single long-running app that genuinely cannot tell its concurrent chats/sessions apart (many desktop apps are like this), then one file for the whole app is the best possible -- do that and SAY SO, so the user knows this tool can only ever contribute 1 to the count.
+    5. Create the file for the CURRENT session now so it shows immediately, then print a short summary: which tool, what you changed, whether it is per-session or one-per-app, and how to undo it.
 
-    RULES: be idempotent (safe to run more than once), never write secrets, and only touch the detected tool's own config. If you cannot tell which tool you are, still do step 4, apply THE GENERAL IDEA as best you can, and say what you did.
+    RULES: be idempotent, never write secrets, only touch this tool's own config.
     """
 
     // Mirror of the setup prompt: pasted into an agent to REMOVE its Jolt integration.
     static let cleanupPrompt = """
     Remove the "Jolt agent tracking" integration that was previously added to THIS tool. Jolt is a macOS menu-bar app being uninstalled. It cleans up its own files, but it cannot undo the per-tool integration you (or a past setup prompt) added, so undo yours.
 
-    VERIFY FIRST (for anyone cautious): Jolt is open source at https://github.com/DHRlabs/Jolt. This prompt only removes local config; do NOT fetch and execute remote code.
+    Source, optional to review: https://github.com/DHRlabs/Jolt . Do not fetch and run remote code; everything you need is below.
 
     WHAT WAS ADDED (the thing to remove):
     Earlier this tool was set up to write a heartbeat file into ~/.jolt/agents when a session starts and remove it when the session ends. That was done with whatever mechanism this tool has: a lifecycle hook, a plugin, a shell function/alias/trap in a shell rc file, a launch wrapper, a background watcher, or similar. Your job is to find and fully remove that, restoring config to how it was.
@@ -241,22 +240,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func copyTrackingPrompt() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Copy the agent setup prompt?"
+        alert.informativeText = """
+        This copies a short prompt to your clipboard. Paste it into any AI agent (Claude Code, Codex, Aider, and so on) and it sets that agent up to report to Jolt, so the count is exact.
+
+        Do it once per agent. Nothing changes until you paste it.
+        """
+        alert.addButton(withTitle: "Copy to Clipboard")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(Self.trackingPrompt, forType: .string)
-
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Setup prompt copied to your clipboard"
-        alert.informativeText = """
-        Paste it into any AI coding agent — Claude Code, Codex, Cursor, Aider, Hermes, whatever you use.
-
-        It detects which tool it's running in and wires that tool up to report live to Jolt — no manual config. Do it once per agent system you want tracked.
-
-        Until then, Jolt automatically falls back to counting agent processes, so Agent Mode still works with zero setup.
-        """
-        alert.alertStyle = .informational
-        alert.runModal()
     }
 
     @objc private func toggleLidClosed() {
@@ -590,8 +587,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // What's running now, as display strings. Exact heartbeat list once any agent has
     // been instrumented, otherwise a best-effort process scan (zero-setup default).
     private func agentDescriptors() -> [String] {
-        if let hb = heartbeatDescriptors(), !hb.isEmpty { return hb }
-        return processScanDescriptors()
+        // Heartbeats are exact; for any tool NOT reporting heartbeats, fall back to the
+        // process scan so instrumented and un-instrumented agents both count.
+        let hb = heartbeatDescriptors() ?? []
+        let hbTools = Set(hb.map { toolName(of: $0) })
+        let scan = processScanDescriptors().filter { !hbTools.contains(toolName(of: $0)) }
+        return (hb + scan).sorted()
+    }
+
+    private func toolName(of descriptor: String) -> String {
+        String(descriptor.split(separator: " ").first ?? "")
     }
 
     private func countAgents() -> Int { agentDescriptors().count }
