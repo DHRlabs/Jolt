@@ -67,18 +67,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let now = CFAbsoluteTimeGetCurrent()
         let dt = min(0.1, now - pulseLastT); pulseLastT = now
-        let f = CGFloat(exp(-dt / 0.22))
+        let f = CGFloat(exp(-dt / 0.45))
         for i in 0..<n { charEnergy[i] *= f }
 
         pulseAcc += dt
         let step = 0.07
         var steps = 0
         while pulseAcc >= step && steps < 64 {
-            charEnergy[sHead] = 1.0
             sHead = (sHead + 1) % n
             pulseAcc -= step
             steps += 1
         }
+        charEnergy[sHead] = 1.0   // head letter stays lit; only the trail fades
 
         let attr = NSMutableAttributedString(string: statusLine.title)
         let purple = NSColor(srgbRed: 0.60, green: 0.35, blue: 1.0, alpha: 1)
