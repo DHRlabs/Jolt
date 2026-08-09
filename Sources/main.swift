@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pulseTimer: Timer?    // sweeps a comet through the lid-closed status text while the menu is open
     private var charEnergy: [CGFloat] = []
     private var sHead = 0
+    private var pulseLastT: CFAbsoluteTime = 0
+    private var pulseAcc = 0.0
 
     private let menu = NSMenu()
     private var statusLine: NSMenuItem!
@@ -48,21 +50,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Breathing purple on the lid-closed status line (runs only while the menu is open).
     private func startPulse() {
         stopPulse()
+        pulseLastT = CFAbsoluteTimeGetCurrent()
         pulseTick()
-        let t = Timer(timeInterval: 0.06, repeats: true) { [weak self] _ in self?.pulseTick() }
+        let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.pulseTick() }
         RunLoop.main.add(t, forMode: .common)
         pulseTimer = t
     }
     private func stopPulse() { pulseTimer?.invalidate(); pulseTimer = nil }
 
-    // Sweep a white comet head through the (purple) status letters.
+    // Sweep a white comet head through the (purple) status letters. Each letter fades on
+    // its own real-time clock, independent of how fast the head advances.
     private func pulseTick() {
         let n = (statusLine.title as NSString).length
         guard n > 0 else { return }
-        if charEnergy.count != n { charEnergy = Array(repeating: 0, count: n); sHead = 0 }
-        for i in 0..<n { charEnergy[i] *= 0.62 }
-        charEnergy[sHead] = 1.0
-        sHead = (sHead + 1) % n
+        if charEnergy.count != n { charEnergy = Array(repeating: 0, count: n); sHead = 0; pulseAcc = 0 }
+
+        let now = CFAbsoluteTimeGetCurrent()
+        let dt = min(0.1, now - pulseLastT); pulseLastT = now
+        let f = CGFloat(exp(-dt / 0.22))
+        for i in 0..<n { charEnergy[i] *= f }
+
+        pulseAcc += dt
+        let step = 0.07
+        var steps = 0
+        while pulseAcc >= step && steps < 64 {
+            charEnergy[sHead] = 1.0
+            sHead = (sHead + 1) % n
+            pulseAcc -= step
+            steps += 1
+        }
 
         let attr = NSMutableAttributedString(string: statusLine.title)
         let purple = NSColor(srgbRed: 0.60, green: 0.35, blue: 1.0, alpha: 1)
