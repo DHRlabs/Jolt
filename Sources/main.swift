@@ -8,9 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var endDate: Date?        // non-nil only for timed keep-awake
     private var lidEndDate: Date?     // non-nil only for timed lid-closed
     private var tickTimer: Timer?
-    private var pulseTimer: Timer?    // animates the lid-closed status comet while the menu is open
-    private var sEnergy: [CGFloat] = Array(repeating: 0, count: 9)
-    private var sHead = 0, sDir = 1
+    private var pulseTimer: Timer?    // sweeps a comet through the lid-closed status text while the menu is open
+    private var charEnergy: [CGFloat] = []
+    private var sHead = 0
 
     private let menu = NSMenu()
     private var statusLine: NSMenuItem!
@@ -48,38 +48,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Breathing purple on the lid-closed status line (runs only while the menu is open).
     private func startPulse() {
         stopPulse()
-        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.pulseTick() }
+        pulseTick()
+        let t = Timer(timeInterval: 0.06, repeats: true) { [weak self] _ in self?.pulseTick() }
         RunLoop.main.add(t, forMode: .common)
         pulseTimer = t
     }
     private func stopPulse() { pulseTimer?.invalidate(); pulseTimer = nil }
-    private func pulseTick() {
-        sHead += sDir
-        if sHead >= sEnergy.count - 1 { sHead = sEnergy.count - 1; sDir = -1 }
-        else if sHead <= 0 { sHead = 0; sDir = 1 }
-        for i in 0..<sEnergy.count { sEnergy[i] *= 0.6 }
-        sEnergy[sHead] = 1.0
-        statusLine.image = purpleComet()
-    }
 
-    private func purpleComet() -> NSImage {
-        let dot: CGFloat = 4.0, gap: CGFloat = 2.0
-        let step = dot + gap
-        let w = CGFloat(sEnergy.count) * step, h: CGFloat = 12
-        let e = sEnergy
-        let img = NSImage(size: NSSize(width: w, height: h), flipped: false) { _ in
-            for i in 0..<e.count {
-                let v = e[i]
-                let color: NSColor = v > 0.99
-                    ? .white
-                    : NSColor(srgbRed: 0.62, green: 0.35, blue: 1.0, alpha: max(0.10, v))  // purple trail
-                color.setFill()
-                NSBezierPath(ovalIn: NSRect(x: CGFloat(i) * step, y: (h - dot) / 2, width: dot, height: dot)).fill()
-            }
-            return true
+    // Sweep a white comet head through the (purple) status letters.
+    private func pulseTick() {
+        let n = (statusLine.title as NSString).length
+        guard n > 0 else { return }
+        if charEnergy.count != n { charEnergy = Array(repeating: 0, count: n); sHead = 0 }
+        for i in 0..<n { charEnergy[i] *= 0.62 }
+        charEnergy[sHead] = 1.0
+        sHead = (sHead + 1) % n
+
+        let attr = NSMutableAttributedString(string: statusLine.title)
+        let purple = NSColor(srgbRed: 0.60, green: 0.35, blue: 1.0, alpha: 1)
+        for i in 0..<n {
+            let v = min(1, charEnergy[i])
+            let color = purple.blended(withFraction: v, of: .white) ?? purple   // white head → purple trail
+            attr.addAttribute(.foregroundColor, value: color, range: NSRange(location: i, length: 1))
         }
-        img.isTemplate = false
-        return img
+        statusLine.attributedTitle = attr
     }
 
     // MARK: Menu
@@ -316,7 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusLine.title = "Off — Mac can sleep"
         }
 
-        if !lid { statusLine.image = nil }   // purple comet (driven by the pulse) shows only while lid-closed
+        if !lid { statusLine.attributedTitle = nil }   // purple letter-comet (driven by the pulse) only while lid-closed
 
         let plainAwake = isActive && endDate == nil && !lid
         awakeItem.state = plainAwake ? .on : .off
