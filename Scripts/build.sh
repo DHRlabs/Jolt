@@ -18,7 +18,7 @@ echo "Compiling…"
 mkdir -p build
 swiftc -O Sources/main.swift -o "build/$BIN"
 
-echo "Assembling $APP…"
+echo "Assembling ${APP}…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 mv "build/$BIN" "$APP/Contents/MacOS/$BIN"
