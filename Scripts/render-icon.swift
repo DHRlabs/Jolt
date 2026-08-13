@@ -1,4 +1,4 @@
-// Renders the Jolt app icon at a given pixel size.
+// Renders the Jolt app icon as 16×16 pixel art at a given output size.
 // Usage: swift render-icon.swift <size> <output.png>
 import AppKit
 import Foundation
@@ -6,9 +6,60 @@ import Foundation
 let args = CommandLine.arguments
 let size = args.count > 1 ? (Int(args[1]) ?? 1024) : 1024
 let outPath = args.count > 2 ? args[2] : "icon.png"
+let grid = 16
 let S = CGFloat(size)
+let pixel = S / CGFloat(grid)
 
-func P(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * S, y: y * S) }
+let charcoal = NSColor(srgbRed: 5.0 / 255.0, green: 6.0 / 255.0, blue: 8.0 / 255.0, alpha: 1)
+let acidGreen = NSColor(srgbRed: 183.0 / 255.0, green: 255.0 / 255.0, blue: 88.0 / 255.0, alpha: 1)
+let mint = NSColor(srgbRed: 119.0 / 255.0, green: 215.0 / 255.0, blue: 177.0 / 255.0, alpha: 1)
+let offWhite = NSColor(srgbRed: 238.0 / 255.0, green: 242.0 / 255.0, blue: 232.0 / 255.0, alpha: 1)
+
+func inCircle(_ x: Int, _ y: Int, centerX: Int, centerY: Int, radius: Int) -> Bool {
+    let dx = x - centerX
+    let dy = y - centerY
+    return dx * dx + dy * dy <= radius * radius
+}
+
+func inEllipse(_ x: Int, _ y: Int, centerX: Int, centerY: Int, radiusX: Int, radiusY: Int) -> Bool {
+    let dx = Double(x - centerX) / Double(radiusX)
+    let dy = Double(y - centerY) / Double(radiusY)
+    return dx * dx + dy * dy <= 1
+}
+
+func isInsideIcon(_ x: Int, _ y: Int) -> Bool {
+    if y == 0 || y == grid - 1 { return x >= 2 && x <= grid - 3 }
+    if y == 1 || y == grid - 2 { return x >= 1 && x <= grid - 2 }
+    return true
+}
+
+func colorAt(_ x: Int, _ y: Int) -> NSColor {
+    guard isInsideIcon(x, y) else { return .clear }
+
+    // A top-down cup: the handle is drawn first so the rim sits cleanly over it.
+    var color = charcoal
+    if inEllipse(x, y, centerX: 12, centerY: 8, radiusX: 3, radiusY: 4) { color = offWhite }
+    if inEllipse(x, y, centerX: 12, centerY: 8, radiusX: 1, radiusY: 2) { color = charcoal }
+
+    let cupCenterX = 7
+    let cupCenterY = 8
+    if inCircle(x, y, centerX: cupCenterX, centerY: cupCenterY, radius: 6) { color = offWhite }
+    if inCircle(x, y, centerX: cupCenterX, centerY: cupCenterY, radius: 4) {
+        color = charcoal // espresso surface
+
+        let dx = x - cupCenterX
+        let dy = y - cupCenterY
+        let distanceSquared = dx * dx + dy * dy
+        if (7...11).contains(distanceSquared) {
+            color = mint // outer signal ring
+        } else if (2...5).contains(distanceSquared) {
+            color = acidGreen // inner signal ring
+        } else if distanceSquared <= 1 {
+            color = mint // signal core
+        }
+    }
+    return color
+}
 
 guard let rep = NSBitmapImageRep(
     bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
@@ -22,56 +73,22 @@ rep.size = NSSize(width: S, height: S)
 let ctx = NSGraphicsContext(bitmapImageRep: rep)!
 NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = ctx
-ctx.cgContext.setAllowsAntialiasing(true)
-ctx.cgContext.interpolationQuality = .high
+ctx.cgContext.clear(NSRect(x: 0, y: 0, width: S, height: S))
+ctx.cgContext.setAllowsAntialiasing(false)
+ctx.cgContext.setShouldAntialias(false)
+ctx.cgContext.interpolationQuality = .none
 
-// ---- Background squircle with warm coffee gradient ----
-let bgRect = NSRect(x: 0, y: 0, width: S, height: S)
-let bgPath = NSBezierPath(roundedRect: bgRect, xRadius: S * 0.2237, yRadius: S * 0.2237)
-bgPath.addClip()
-let amber    = NSColor(srgbRed: 1.00, green: 0.62, blue: 0.11, alpha: 1) // #FF9F1C
-let espresso = NSColor(srgbRed: 0.29, green: 0.17, blue: 0.16, alpha: 1) // #4A2C2A
-NSGradient(starting: amber, ending: espresso)!.draw(in: bgRect, angle: -90)
-
-// ---- Soft shadow under the mug ----
-let shadow = NSBezierPath(ovalIn: NSRect(x: S*0.33, y: S*0.205, width: S*0.34, height: S*0.06))
-NSColor(white: 0, alpha: 0.18).setFill()
-shadow.fill()
-
-// ---- Lightning bolt (the "jolt"), rising from the cup ----
-let bolt = NSBezierPath()
-bolt.move(to: P(0.560, 0.855))
-bolt.line(to: P(0.410, 0.640))
-bolt.line(to: P(0.500, 0.640))
-bolt.line(to: P(0.435, 0.500))
-bolt.line(to: P(0.600, 0.720))
-bolt.line(to: P(0.512, 0.720))
-bolt.close()
-NSColor(srgbRed: 1.0, green: 0.83, blue: 0.0, alpha: 1).setFill() // #FFD400
-bolt.fill()
-NSColor(srgbRed: 0.29, green: 0.17, blue: 0.16, alpha: 0.65).setStroke()
-bolt.lineWidth = S * 0.010
-bolt.lineJoinStyle = .round
-bolt.stroke()
-
-// ---- Mug body ----
-let body = NSBezierPath(roundedRect: NSRect(x: S*0.35, y: S*0.25, width: S*0.30, height: S*0.25),
-                        xRadius: S*0.045, yRadius: S*0.045)
-NSColor.white.setFill()
-body.fill()
-
-// ---- Mug handle ----
-let handle = NSBezierPath()
-handle.appendArc(withCenter: P(0.655, 0.375), radius: S*0.075, startAngle: -78, endAngle: 78)
-handle.lineWidth = S * 0.032
-handle.lineCapStyle = .round
-NSColor.white.setStroke()
-handle.stroke()
-
-// ---- Coffee line inside the rim ----
-let coffee = NSBezierPath(ovalIn: NSRect(x: S*0.375, y: S*0.462, width: S*0.25, height: S*0.028))
-NSColor(srgbRed: 0.36, green: 0.20, blue: 0.11, alpha: 1).setFill() // #5C3320
-coffee.fill()
+for y in 0..<grid {
+    for x in 0..<grid {
+        colorAt(x, y).setFill()
+        NSBezierPath(rect: NSRect(
+            x: CGFloat(x) * pixel,
+            y: CGFloat(grid - y - 1) * pixel,
+            width: pixel,
+            height: pixel
+        )).fill()
+    }
+}
 
 NSGraphicsContext.restoreGraphicsState()
 

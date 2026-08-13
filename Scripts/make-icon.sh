@@ -9,6 +9,8 @@ mkdir -p "$ICONSET"
 
 render() { swift Scripts/render-icon.swift "$1" "$ICONSET/$2" >/dev/null; }
 
+swift Scripts/render-icon.swift 1024 art/icon-master.png >/dev/null
+
 render 16   icon_16x16.png
 render 32   icon_16x16@2x.png
 render 32   icon_32x32.png
