@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 - 2026-08-19
+
+### Fixed
+
+- The app icon now uses a graphite-gray gradient behind the white coffee cup for clear contrast.
+
 ## 1.3.0 - 2026-08-19
 
 ### Changed
