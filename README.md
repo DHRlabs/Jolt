@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="art/icon-master.png" width="128" alt="Jolt icon">
+![Jolt icon](https://raw.githubusercontent.com/DHRlabs/Jolt/main/art/icon-master.png)
 
 # Jolt
 
-**A one-click menu-bar toggle to keep your Mac awake.**
+**A native, one-click menu-bar app that keeps your Mac awake.**
 
 Native, tiny, no dependencies. Lives in your menu bar as a coffee cup.
 
-[**⬇ Download the latest DMG**](https://github.com/DHRlabs/Jolt/releases/latest/download/Jolt.dmg)
+[**⬇ Download the latest version**](https://github.com/DHRlabs/Jolt/releases/latest/download/Jolt.dmg)
 
 </div>
 
