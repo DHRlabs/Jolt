@@ -8,7 +8,7 @@
 
 Native, tiny, no dependencies. Lives in your menu bar as a coffee cup.
 
-[**⬇ Download the latest version**](https://github.com/DHRlabs/Jolt/releases/latest/download/Jolt.dmg)
+Releases are currently kept off GitHub; use the local build path for now.
 
 </div>
 
@@ -27,7 +27,7 @@ The icon fills in when it's keeping your Mac awake, and the top of the menu show
 
 ## Install
 
-1. Download **[Jolt.dmg](https://github.com/DHRlabs/Jolt/releases/latest/download/Jolt.dmg)**.
+1. Build from source to create `build/Jolt.dmg` locally.
 2. Open it and drag **Jolt** into **Applications**.
 3. Launch it. A coffee cup appears in your menu bar (there's no Dock icon).
 
