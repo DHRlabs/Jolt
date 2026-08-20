@@ -1,6 +1,6 @@
 <div align="center">
 
-![Jolt icon](https://raw.githubusercontent.com/DHRlabs/Jolt/main/art/icon-master.png)
+<img src="art/icon-master.png" width="160" alt="Jolt app icon">
 
 # Jolt
 
@@ -8,7 +8,7 @@
 
 Native, tiny, no dependencies. Lives in your menu bar as a coffee cup.
 
-Releases are currently kept off GitHub; use the local build path for now.
+[**Download Jolt for macOS**](https://github.com/DHRlabs/Jolt/releases/latest/download/Jolt.dmg)
 
 </div>
 
@@ -27,7 +27,7 @@ The icon fills in when it's keeping your Mac awake, and the top of the menu show
 
 ## Install
 
-1. Build from source to create `build/Jolt.dmg` locally.
+1. Download **[Jolt.dmg](https://github.com/DHRlabs/Jolt/releases/latest/download/Jolt.dmg)**.
 2. Open it and drag **Jolt** into **Applications**.
 3. Launch it. A coffee cup appears in your menu bar (there's no Dock icon).
 
@@ -61,7 +61,7 @@ bash Scripts/make-dmg.sh   # → build/Jolt.dmg
 ```
 
 - `Sources/main.swift` — the whole app (AppKit `NSStatusItem`, wraps `/usr/bin/caffeinate`).
-- `art/icon-master.png` + `Scripts/make-icon.sh` — rebuild platform icons from the selected source artwork.
+- `art/icon-master.png` is the app icon and GitHub hero; `Scripts/make-icon.sh` builds every macOS icon size from it.
 
 ## License
 
