@@ -12,6 +12,7 @@ Use the `imagegen` skill for raster imagery unless the user explicitly asks for 
 
 ## Current Jolt icon direction
 
-- A coffee cup with acid-green and mint concentric signal rings on its dark coffee surface, centered on DHR charcoal with no text.
+- A coffee cup with acid-green and mint concentric signal rings on its dark coffee surface, centered on a graphite-gray gradient with no text.
 - Palette: `#050608` charcoal, `#b7ff58` acid green, `#77d7b1` mint, and `#eef2e8` off-white.
+- Background gradient: `#565c62` medium gray at the upper left to `#171a1f` deep gray at the lower right.
 - The selected artwork in `art/icon-master.png` is the source of truth for this direction.
