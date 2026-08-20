@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="art/icon-master.png" width="160" alt="Jolt app icon">
+<img src="https://raw.githubusercontent.com/DHRlabs/Jolt/main/art/icon-master.png?v=1.3.1" width="160" alt="Jolt app icon">
 
 # Jolt
 
