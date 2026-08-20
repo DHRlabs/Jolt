@@ -61,7 +61,7 @@ bash Scripts/make-dmg.sh   # → build/Jolt.dmg
 ```
 
 - `Sources/main.swift` — the whole app (AppKit `NSStatusItem`, wraps `/usr/bin/caffeinate`).
-- `Scripts/render-icon.swift` + `Scripts/make-icon.sh` — generate the icon from code.
+- `art/icon-master.png` + `Scripts/make-icon.sh` — rebuild platform icons from the selected source artwork.
 
 ## License
 
