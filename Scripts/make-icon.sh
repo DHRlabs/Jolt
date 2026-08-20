@@ -1,13 +1,20 @@
 #!/bin/bash
-# Render every required icon size natively and assemble Jolt.icns
+# Build every required icon size from Jolt's selected source artwork.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+MASTER="art/icon-master.png"
 ICONSET="art/Jolt.iconset"
+
+if [ ! -f "$MASTER" ]; then
+  echo "Missing $MASTER" >&2
+  exit 1
+fi
+
 rm -rf "$ICONSET"
 mkdir -p "$ICONSET"
 
-render() { swift Scripts/render-icon.swift "$1" "$ICONSET/$2" >/dev/null; }
+render() { sips -z "$1" "$1" "$MASTER" --out "$ICONSET/$2" >/dev/null; }
 
 render 16   icon_16x16.png
 render 32   icon_16x16@2x.png
