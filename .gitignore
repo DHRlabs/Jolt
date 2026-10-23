@@ -4,3 +4,7 @@ art/Jolt.iconset/
 
 # macOS
 .DS_Store
+
+# Local agent rules
+AGENTS.md
+CLAUDE.md
