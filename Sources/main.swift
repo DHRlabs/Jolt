@@ -305,6 +305,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateUI() {
         let lid = lidOn()
         if !lid { lidEndDate = nil }
+        // Lid-closed disables system sleep, but display-sleep prevention is a separate
+        // caffeinate process. If it's not running (died, or the flag was set outside
+        // this launch of Jolt), restart it so the screen doesn't sleep/lock.
+        if lid && !isActive { startCaffeinate(seconds: nil) }
 
         let awake = isActive || lid
         let symbol = awake ? "cup.and.saucer.fill" : "cup.and.saucer"
